@@ -21,15 +21,19 @@ class OpenseaCollectionScraper:
         self.tokenScraper = OpenseaTokenScraper(driver, authKey)
 
     def scrapeCollection(self) -> None:
-        collectionUrls = self.__getCollectionUrls()
         numOfSuccess = 0
-        for i in range(self.__numOfCollections):
-            try:
-                collectionInfo = self.__createCollection(collectionUrls[i])
-                self.tokenScraper.scrapeTokens(collectionInfo)
-                numOfSuccess += 1
-            except RuntimeError as err:
-                logging.warning(err)
+        while numOfSuccess != self.__numOfCollections:
+            collectionUrls = self.__getCollectionUrls()
+            for url in collectionUrls:
+                try:
+                    collectionInfo = self.__createCollection(url)
+                    self.tokenScraper.scrapeTokens(collectionInfo)
+                    numOfSuccess += 1
+                    if numOfSuccess == self.__numOfCollections:
+                        break
+                except RuntimeError as err:
+                    logging.warning(err)
+
         logging.info('성공: {}'.format(numOfSuccess))
 
     def __getCollectionUrls(self) -> list:
