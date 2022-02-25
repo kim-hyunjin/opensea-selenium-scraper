@@ -20,24 +20,27 @@ class OpenseaCollectionScraper:
         self.__authKey = authKey
         self.tokenScraper = OpenseaTokenScraper(driver, authKey)
 
-        # 컬렉션 관련
     def scrapeCollection(self) -> None:
         collectionUrls = self.__getCollectionUrls()
+        numOfSuccess = 0
         for i in range(self.__numOfCollections):
-            collectionInfo = self.__createCollection(collectionUrls[i])
-            if collectionInfo == None:
-                continue
-            self.tokenScraper.scrapeTokens(collectionInfo)
+            try:
+                collectionInfo = self.__createCollection(collectionUrls[i])
+                self.tokenScraper.scrapeTokens(collectionInfo)
+                numOfSuccess += 1
+            except RuntimeError as err:
+                logging.warning(err)
+        logging.info('성공: {}'.format(numOfSuccess))
 
     def __getCollectionUrls(self) -> list:
         self.__driver.get(self.__rancomCategory())
-        time.sleep(5)
+        time.sleep(3)
         for _ in range(random.randrange(0, 10)):
             self.__driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
 
         collectionUrls = []
         while True:
-            time.sleep(5)
+            time.sleep(3)
             collections = self.__driver.find_elements(By.CSS_SELECTOR, "a.CarouselCard--main")
             for collection in collections:
                 url = collection.get_attribute('href')
@@ -49,7 +52,7 @@ class OpenseaCollectionScraper:
 
     def __rancomCategory(self) -> str:
         self.__driver.get('https://opensea.io/explore-collections')
-        self.__driver.implicitly_wait(5)
+        time.sleep(3)
         category = self.__driver.find_element(By.CSS_SELECTOR, "#main ul")
         tabLinks = category.find_elements(By.CSS_SELECTOR, "li > a")
         tabUrls = []
@@ -60,12 +63,9 @@ class OpenseaCollectionScraper:
     def __createCollection(self, url):
         logging.info('collection url: {}'.format(url))
         self.__driver.get(url)
-        self.__driver.implicitly_wait(5)
+        time.sleep(3)
         
         img = self.__getCollectionImage()
-        if img == None:
-            logging.warning("collection 썸네일 가져오기 실패")
-            return
 
         maxItemCnt = self.__getMaxItemNum()
         collectionInfo = self.__getCollectionInfo()
@@ -76,7 +76,8 @@ class OpenseaCollectionScraper:
 
         resBody = res.json()
         collectionInfo["collection_id"] = resBody["collection"]["id"]
-        collectionInfo["item_cnt"] = random.randrange(1, min([self.__maxNumOfAssets, maxItemCnt]))
+        # collectionInfo["item_cnt"] = random.randrange(1, min([self.__maxNumOfAssets, maxItemCnt]))
+        collectionInfo["item_cnt"] = min([self.__maxNumOfAssets, maxItemCnt]) # 원하는 개수로 고정
         return collectionInfo
 
     def __sendCollectionToServer(self, img: Image, collection):
@@ -107,7 +108,7 @@ class OpenseaCollectionScraper:
             img = Image.open(BytesIO(imgRes.content))
             return img
         except:
-            return None
+            raise RuntimeError('컬렉션 썸네일 가져오기 실패')
 
     def __getMaxItemNum(self):
         itemStatus = self.__driver.find_element(By.CLASS_NAME, 'CollectionStatsBar--bottom-bordered div[tabIndex="-1"]')

@@ -18,15 +18,12 @@ class OpenseaTokenScraper:
         self.__authKey = authKey
         self.__fake = Faker()
 
-    # 토큰 관련
     def scrapeTokens(self, collectionInfo):
         logging.info('token scrape')
         urlsMoreThanItemCnt = self.__getTokenUrls(collectionInfo["item_cnt"])
         for i in range(collectionInfo["item_cnt"]):
-            isMakeToken = self.__createToken(urlsMoreThanItemCnt[i], collectionInfo["collection_id"], collectionInfo["type"])
-            if isMakeToken == False:
-                logging.warning('token 만들기 실패')
-                break
+            self.__createToken(urlsMoreThanItemCnt[i], collectionInfo["collection_id"], collectionInfo["type"])
+            
 
     def __getTokenUrls(self, itemCnt):
         tokenUrls = []
@@ -36,7 +33,7 @@ class OpenseaTokenScraper:
         assetContainer = self.__driver.find_element(By.CLASS_NAME, "AssetsSearchView--assets")
 
         while True:
-            time.sleep(5)
+            time.sleep(3)
             moreAsset = assetContainer.find_elements(By.CSS_SELECTOR, "article.Asset--loaded")
             for asset in moreAsset:
                 link = asset.find_element(By.CLASS_NAME, "Asset--anchor")
@@ -48,11 +45,8 @@ class OpenseaTokenScraper:
 
     def __createToken(self, url, collectionId, tokenType):
         self.__driver.get(url)
-        time.sleep(5)
+        time.sleep(3)
         img = self.__getTokenImage()
-        if img == None:
-            logging.warning('토큰 이미지 가져오기 실패')
-            return False
         token = self.__getTokenInfo(collectionId, tokenType)
         self.__sendTokenToServer(img, token)
 
@@ -63,7 +57,7 @@ class OpenseaTokenScraper:
             imgRes = requests.get(imgUrl)
             return Image.open(BytesIO(imgRes.content))
         except:
-            return None
+            raise RuntimeError('토큰 이미지 가져오기 실패')
 
     def __getTokenInfo(self, collectionId, tokenType):
         token = {}
