@@ -8,6 +8,7 @@ import random
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 import logging
 import os
+import time
 
 from opensea_tokens import OpenseaTokenScraper
 
@@ -30,23 +31,21 @@ class OpenseaCollectionScraper:
 
     def __getCollectionUrls(self) -> list:
         self.__driver.get(self.__rancomCategory())
-        self.__driver.implicitly_wait(5)
-        self.__randomScrollDown()
+        time.sleep(5)
+        for _ in range(random.randrange(0, 10)):
+            self.__driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
 
         collectionUrls = []
         while True:
+            time.sleep(5)
             collections = self.__driver.find_elements(By.CSS_SELECTOR, "a.CarouselCard--main")
             for collection in collections:
-                collectionUrls.append(collection.get_attribute('href'))
-            self.__driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
+                url = collection.get_attribute('href')
+                collectionUrls.append(url)
             if len(collectionUrls) > self.__numOfCollections: break
-
-        return collectionUrls
-
-    def __randomScrollDown(self) -> None:
-        for _ in range(random.randrange(0, 10)):
             self.__driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
-        self.__driver.implicitly_wait(5)
+
+        return collectionUrls        
 
     def __rancomCategory(self) -> str:
         self.__driver.get('https://opensea.io/explore-collections')
@@ -64,6 +63,10 @@ class OpenseaCollectionScraper:
         self.__driver.implicitly_wait(5)
         
         img = self.__getCollectionImage()
+        if img == None:
+            logging.warning("collection 썸네일 가져오기 실패")
+            return
+
         maxItemCnt = self.__getMaxItemNum()
         collectionInfo = self.__getCollectionInfo()
         res = self.__sendCollectionToServer(img, collectionInfo)
@@ -97,11 +100,14 @@ class OpenseaCollectionScraper:
         return res
 
     def __getCollectionImage(self):
-        collectionImg = self.__driver.find_element(By.CSS_SELECTOR, ".CollectionHeader--collection-image > img")
-        imgUrl = collectionImg.get_attribute('src')
-        imgRes = requests.get(imgUrl)
-        img = Image.open(BytesIO(imgRes.content))
-        return img
+        try:
+            collectionImg = self.__driver.find_element(By.CSS_SELECTOR, ".CollectionHeader--collection-image > img")
+            imgUrl = collectionImg.get_attribute('src')
+            imgRes = requests.get(imgUrl)
+            img = Image.open(BytesIO(imgRes.content))
+            return img
+        except:
+            return None
 
     def __getMaxItemNum(self):
         itemStatus = self.__driver.find_element(By.CLASS_NAME, 'CollectionStatsBar--bottom-bordered div[tabIndex="-1"]')

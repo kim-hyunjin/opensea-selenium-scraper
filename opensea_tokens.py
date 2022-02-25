@@ -104,7 +104,7 @@ class OpenseaTokenScraper:
         if tokenType == "erc721":
             return 1
         else:
-            return random.randrange(1, 5)
+            return random.randrange(1, 3)
 
     def __getSale(self):
         saleType = self.__randomSaleType()
