@@ -21,8 +21,15 @@ class OpenseaTokenScraper:
     def scrapeTokens(self, collectionInfo):
         logging.info('token scrape')
         urlsMoreThanItemCnt = self.__getTokenUrls(collectionInfo["item_cnt"])
+        numOfSuccess = 0
         for i in range(collectionInfo["item_cnt"]):
-            self.__createToken(urlsMoreThanItemCnt[i], collectionInfo["collection_id"], collectionInfo["type"])
+            try:
+                self.__createToken(urlsMoreThanItemCnt[i], collectionInfo["collection_id"], collectionInfo["type"])
+                numOfSuccess += 1
+            except RuntimeError as err:
+                logging.warning(err)
+                raise RuntimeError('토큰을 원하는만큼 만드는데 실패했습니다. 성공한 개수 : {}'.format(numOfSuccess))
+        logging.info('토큰 생성 성공수: {}'.format(numOfSuccess))
             
 
     def __getTokenUrls(self, itemCnt):
@@ -33,13 +40,13 @@ class OpenseaTokenScraper:
         assetContainer = self.__driver.find_element(By.CLASS_NAME, "AssetsSearchView--assets")
 
         while True:
-            time.sleep(3)
+            time.sleep(5)
             moreAsset = assetContainer.find_elements(By.CSS_SELECTOR, "article.Asset--loaded")
             for asset in moreAsset:
                 link = asset.find_element(By.CLASS_NAME, "Asset--anchor")
                 tokenUrls.append(link.get_attribute('href'))
             self.__driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
-            if len(tokenUrls) > itemCnt: break
+            if len(tokenUrls) >= itemCnt: break
         
         return tokenUrls
 

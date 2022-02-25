@@ -27,6 +27,7 @@ class OpenseaCollectionScraper:
             for url in collectionUrls:
                 try:
                     collectionInfo = self.__createCollection(url)
+                    logging.info('collectionInfo {}'.format(collectionInfo))
                     self.tokenScraper.scrapeTokens(collectionInfo)
                     numOfSuccess += 1
                     if numOfSuccess == self.__numOfCollections:
@@ -69,14 +70,16 @@ class OpenseaCollectionScraper:
         self.__driver.get(url)
         time.sleep(3)
         
-        img = self.__getCollectionImage()
-
-        maxItemCnt = self.__getMaxItemNum()
-        collectionInfo = self.__getCollectionInfo()
+        try:
+            img = self.__getCollectionImage()
+            maxItemCnt = self.__getMaxItemNum()
+            collectionInfo = self.__getCollectionInfo()
+        except RuntimeError as err:
+            raise err
+    
         res = self.__sendCollectionToServer(img, collectionInfo)
         if res.status_code != 200:
-            logging.warning('컬렉션 생성 실패')
-            return None
+            raise RuntimeError('서버에 컬렉션 생성 실패!')
 
         resBody = res.json()
         collectionInfo["collection_id"] = resBody["collection"]["id"]
@@ -101,7 +104,7 @@ class OpenseaCollectionScraper:
             'Authorization': "Bearer {}".format(self.__authKey)
         }
         res = requests.post(url, headers=headers, data=encoded)
-        logging.info('collection {} {}'.format(collection["name"], res.status_code))
+        logging.info('컬렉션 생성 결과: {} {}'.format(collection["name"], res.status_code))
         return res
 
     def __getCollectionImage(self):
@@ -115,23 +118,26 @@ class OpenseaCollectionScraper:
             raise RuntimeError('컬렉션 썸네일 가져오기 실패')
 
     def __getMaxItemNum(self):
-        itemStatus = self.__driver.find_element(By.CLASS_NAME, 'CollectionStatsBar--bottom-bordered div[tabIndex="-1"]')
         try:
+            itemStatus = self.__driver.find_element(By.CLASS_NAME, 'CollectionStatsBar--bottom-bordered div[tabIndex="-1"]')
             return int(itemStatus.get_attribute('innerHTML'))
         except:
             return self.__maxNumOfAssets
 
     def __getCollectionInfo(self):
-        collectionInfo = {}
-        collectionName = self.__driver.find_element(By.TAG_NAME, "h1").text
-        collectionInfo["name"] = collectionName
-        collectionInfo["symbol"] = collectionName[:3].upper()
         try:
-            desc = self.__driver.find_element(By.CSS_SELECTOR, "CollectionHeader--description > span")
-            collectionInfo["description"] = desc.text
+            collectionInfo = {}
+            collectionName = self.__driver.find_element(By.TAG_NAME, "h1").text
+            collectionInfo["name"] = collectionName
+            collectionInfo["symbol"] = collectionName[:3].upper()
+            try:
+                desc = self.__driver.find_element(By.CSS_SELECTOR, "CollectionHeader--description > span")
+                collectionInfo["description"] = desc.text
+            except:
+                collectionInfo["description"] = ""
+
+            collectionInfo["type"] = random.choice(["erc721", "erc1155"])
+
+            return collectionInfo
         except:
-            collectionInfo["description"] = ""
-
-        collectionInfo["type"] = random.choice(["erc721", "erc1155"])
-
-        return collectionInfo
+            raise RuntimeError('컬렉션 정보 생성 중 실패!')
