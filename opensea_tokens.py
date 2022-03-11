@@ -19,7 +19,7 @@ class OpenseaTokenScraper:
         self.__fake = Faker()
 
     def scrapeTokens(self, collectionInfo):
-        logging.info('token scrape')
+        logging.info('token scrape start')
         urlsMoreThanItemCnt = self.__getTokenUrls(collectionInfo["item_cnt"])
         numOfSuccess = 0
         for i in range(collectionInfo["item_cnt"]):
@@ -53,17 +53,33 @@ class OpenseaTokenScraper:
     def __createToken(self, url, collectionId, tokenType):
         self.__driver.get(url)
         time.sleep(3)
-        img = self.__getTokenImage()
-        token = self.__getTokenInfo(collectionId, tokenType)
-        self.__sendTokenToServer(img, token)
+        try:
+            img = self.__getTokenImage()
+            token = self.__getTokenInfo(collectionId, tokenType)
+            self.__sendTokenToServer(img, token)
+        except:
+            raise RuntimeError('토큰 생성 중 실패')
 
     def __getTokenImage(self):
+        imgFound = True
+        videoFound = True
         try:
             imgElement = self.__driver.find_element(By.CLASS_NAME, "Image--image")
             imgUrl = imgElement.get_attribute("src")
             imgRes = requests.get(imgUrl)
             return Image.open(BytesIO(imgRes.content))
         except:
+            imgFound = False
+
+        try:
+            videoElement = self.__driver.find_element(By.CSS_SELECTOR, ".item--media video")
+            posterUrl = videoElement.get_attribute("poster")
+            imgRes = requests.get(posterUrl)
+            return Image.open(BytesIO(imgRes.content))
+        except:
+            videoFound = False
+
+        if not imgFound and not videoFound:
             raise RuntimeError('토큰 이미지 가져오기 실패')
 
     def __getTokenInfo(self, collectionId, tokenType):
@@ -108,13 +124,13 @@ class OpenseaTokenScraper:
             return random.randrange(1, 3)
 
     def __getSale(self):
-        saleType = self.__randomSaleType()
         sale = {}
-        sale["sale_type"] = saleType
-        sale["currency"] = "eth"
-        if saleType == "fixed":
+        sale["sale_type"] = self.__randomSaleType()
+        sale["currency"] = self.__randomCurrency()
+
+        if sale["sale_type"] == "fixed":
             sale["price"] = self.__randomPrice()
-        elif saleType == "time":
+        elif sale["sale_type"] == "time":
             sale["start_price"] = self.__randomPrice()
             sale["start_at"] = datetime.today().strftime("%Y-%m-%dT%H:%M:%SZ")
             sale["end_at"] = self.__randomDateWithinMonth().strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -131,8 +147,10 @@ class OpenseaTokenScraper:
         return traits
 
     def __randomSaleType(self):
-        saleType = ["fixed", "auction", "time"]
-        return random.choice(saleType)
+        return random.choice(["fixed", "auction", "time"])
+
+    def __randomCurrency(self):
+        return random.choice(["eth", "mr", "mf"])
 
     def __randomPrice(self):
         return round(random.uniform(0.01, 100.0), 2)

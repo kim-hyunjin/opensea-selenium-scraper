@@ -46,11 +46,18 @@ class OpenseaCollectionScraper:
         collectionUrls = []
         while True:
             time.sleep(3)
-            collections = self.__driver.find_elements(By.CSS_SELECTOR, "a.CarouselCard--main")
-            for collection in collections:
-                url = collection.get_attribute('href')
-                collectionUrls.append(url)
+            
+            try:
+                collections = self.__driver.find_elements(By.CSS_SELECTOR, "a.CarouselCard--main")
+            except:
+                pass
+            else:
+                for collection in collections:
+                    url = collection.get_attribute('href')
+                    collectionUrls.append(url)
+
             if len(collectionUrls) > self.__numOfCollections: break
+
             self.__driver.execute_script('window.scrollTo(0, document.body.scrollHeight);')
 
         return collectionUrls        
@@ -72,29 +79,40 @@ class OpenseaCollectionScraper:
         
         try:
             img = self.__getCollectionImage()
-            maxItemCnt = self.__getMaxItemNum()
+            bannerImg = self.__getBannerImage()
             collectionInfo = self.__getCollectionInfo()
+
+            res = self.__sendCollectionToServer(img, bannerImg, collectionInfo)
+            resBody = res.json()
+            collectionInfo["collection_id"] = resBody["collection"]["id"]
+            
+            maxItemCnt = self.__getMaxItemNum()
+            # max 개수까지 랜덤하게 생성을 원하는 경우
+            # collectionInfo["item_cnt"] = random.randrange(1, min([self.__maxNumOfAssets, maxItemCnt]))
+            
+            # 원하는 개수로 고정해 생성을 원하는 경우
+            collectionInfo["item_cnt"] = min([self.__maxNumOfAssets, maxItemCnt]) 
+            return collectionInfo
         except RuntimeError as err:
             raise err
-    
-        res = self.__sendCollectionToServer(img, collectionInfo)
-        if res.status_code != 200:
-            raise RuntimeError('서버에 컬렉션 생성 실패!')
+        
+        
 
-        resBody = res.json()
-        collectionInfo["collection_id"] = resBody["collection"]["id"]
-        # collectionInfo["item_cnt"] = random.randrange(1, min([self.__maxNumOfAssets, maxItemCnt]))
-        collectionInfo["item_cnt"] = min([self.__maxNumOfAssets, maxItemCnt]) # 원하는 개수로 고정
-        return collectionInfo
-
-    def __sendCollectionToServer(self, img: Image, collection):
+    def __sendCollectionToServer(self, img: Image, bannerImg: Image, collection):
         url = os.getenv('COLLECTION_API_URL')
+
         imgIO = BytesIO()
         img.save(imgIO, img.format)
         img_format = img.format.lower()
+
+        coverImgIO = BytesIO()
+        bannerImg.save(coverImgIO, bannerImg.format)
+        cover_format = bannerImg.format.lower()
+
         encoded = MultipartEncoder(
             fields={
                 'thumbnailImage': ("thumbnail.{}".format(img_format), imgIO, 'image/{}'.format(img_format)),
+                'coverImage': ("cover.{}".format(cover_format), coverImgIO, 'image/{}'.format(cover_format)),
                 'json': json.dumps(collection)
             }
         )
@@ -105,7 +123,20 @@ class OpenseaCollectionScraper:
         }
         res = requests.post(url, headers=headers, data=encoded)
         logging.info('컬렉션 생성 결과: {} {}'.format(collection["name"], res.status_code))
+        if res.status_code != 200:
+            raise RuntimeError('서버에 컬렉션 생성 실패!')
+        
         return res
+
+    def __getBannerImage(self):
+        try:
+            bannerImg = self.__driver.find_element(By.CSS_SELECTOR, ".Banner--image > img")
+            imgUrl = bannerImg.get_attribute('src')
+            imgRes = requests.get(imgUrl)
+            img = Image.open(BytesIO(imgRes.content))
+            return img
+        except:
+            raise RuntimeError('컬렉션 배너 이미지 가져오기 실패')
 
     def __getCollectionImage(self):
         try:
