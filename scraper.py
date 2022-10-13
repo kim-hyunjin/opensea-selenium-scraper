@@ -5,20 +5,21 @@ import logging
 from dotenv import load_dotenv
 
 from opensea_collection import OpenseaCollectionScraper
+from utils import createFolder
 
 logging.basicConfig(
   level = logging.INFO
 )
 
 load_dotenv()
-authKey = input('인증키')
 numOfCollections = int(input('컬렉션 수'))
 maxNumOfAssets = int(input("최대 토큰 개수"))
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+driver = webdriver.Chrome(service=Service(executable_path='./chromedriver'))
 
 def main():
     try:
-        scraper = OpenseaCollectionScraper(driver, numOfCollections, maxNumOfAssets, authKey)
+        createFolder('dist')
+        scraper = OpenseaCollectionScraper(driver, numOfCollections, maxNumOfAssets)
         scraper.scrapeCollection()
     finally:
         driver.quit()

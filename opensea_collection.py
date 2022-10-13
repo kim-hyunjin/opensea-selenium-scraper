@@ -7,18 +7,17 @@ import json
 import random
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 import logging
-import os
 import time
 
 from opensea_tokens import OpenseaTokenScraper
+from utils import createFolder
 
 class OpenseaCollectionScraper:
-    def __init__(self, driver: webdriver, numOfCollections: int, maxNumOfAssets: int, authKey: str) -> None:
+    def __init__(self, driver: webdriver, numOfCollections: int, maxNumOfAssets: int) -> None:
         self.__driver = driver
         self.__numOfCollections = numOfCollections
         self.__maxNumOfAssets = maxNumOfAssets
-        self.__authKey = authKey
-        self.tokenScraper = OpenseaTokenScraper(driver, authKey)
+        self.tokenScraper = OpenseaTokenScraper(driver)
 
     def scrapeCollection(self) -> None:
         numOfSuccess = 0
@@ -35,7 +34,7 @@ class OpenseaCollectionScraper:
                 except RuntimeError as err:
                     logging.warning(err)
 
-        logging.info('성공: {}'.format(numOfSuccess))
+        logging.info('num of success: {}'.format(numOfSuccess))
 
     def __getCollectionUrls(self) -> list:
         self.__driver.get(self.__rancomCategory())
@@ -48,13 +47,14 @@ class OpenseaCollectionScraper:
             time.sleep(3)
             
             try:
-                collections = self.__driver.find_elements(By.CSS_SELECTOR, "a.CarouselCard--main")
+                collections = self.__driver.find_elements(By.TAG_NAME, "a")
             except:
-                pass
+                raise RuntimeError("error occur while gathering collection link")
             else:
                 for collection in collections:
                     url = collection.get_attribute('href')
-                    collectionUrls.append(url)
+                    if (isinstance(url, str) and url.startswith('https://opensea.io/collection/')):
+                        collectionUrls.append(url)
 
             if len(collectionUrls) > self.__numOfCollections: break
 
@@ -82,15 +82,9 @@ class OpenseaCollectionScraper:
             bannerImg = self.__getBannerImage()
             collectionInfo = self.__getCollectionInfo()
 
-            res = self.__sendCollectionToServer(img, bannerImg, collectionInfo)
-            resBody = res.json()
-            collectionInfo["collection_id"] = resBody["collection"]["id"]
+            self.__saveToFile(img, bannerImg, collectionInfo)
             
             maxItemCnt = self.__getMaxItemNum()
-            # max 개수까지 랜덤하게 생성을 원하는 경우
-            # collectionInfo["item_cnt"] = random.randrange(1, min([self.__maxNumOfAssets, maxItemCnt]))
-            
-            # 원하는 개수로 고정해 생성을 원하는 경우
             collectionInfo["item_cnt"] = min([self.__maxNumOfAssets, maxItemCnt]) 
             return collectionInfo
         except RuntimeError as err:
@@ -98,61 +92,51 @@ class OpenseaCollectionScraper:
         
         
 
-    def __sendCollectionToServer(self, img: Image, bannerImg: Image, collection):
-        url = os.getenv('COLLECTION_API_URL')
-
-        imgIO = BytesIO()
-        img.save(imgIO, img.format)
-        img_format = img.format.lower()
-
-        coverImgIO = BytesIO()
-        bannerImg.save(coverImgIO, bannerImg.format)
-        cover_format = bannerImg.format.lower()
-
-        encoded = MultipartEncoder(
-            fields={
-                'thumbnailImage': ("thumbnail.{}".format(img_format), imgIO, 'image/{}'.format(img_format)),
-                'coverImage': ("cover.{}".format(cover_format), coverImgIO, 'image/{}'.format(cover_format)),
-                'json': json.dumps(collection)
-            }
-        )
-        headers = {
-            'accept': 'application/json',
-            'Content-Type': encoded.content_type,
-            'Authorization': "Bearer {}".format(self.__authKey)
-        }
-        res = requests.post(url, headers=headers, data=encoded)
-        logging.info('컬렉션 생성 결과: {} {}'.format(collection["name"], res.status_code))
-        if res.status_code != 200:
-            raise RuntimeError('서버에 컬렉션 생성 실패!')
+    def __saveToFile(self, img: Image, bannerImg: Image, collection):
         
-        return res
+        try:
+            collectionPath = 'dist/{}'.format(collection["name"])
+            logging.info('collection path: {}'.format(collectionPath))
+            createFolder(collectionPath)
+            
+            img.save("{}/{}.{}".format(collectionPath, collection["name"]+"-thumbnail", img.format.lower()))
+            bannerImg.save("{}/{}.{}".format(collectionPath, collection["name"]+"-banner", bannerImg.format.lower()))
+            collection_json = json.dumps(collection)
+            with open("{}/{}.json".format(collectionPath, collection["name"]), "w") as outfile:
+                outfile.write(collection_json)
+            
+        except:
+            raise RuntimeError('fail to create collection folder')
+
 
     def __getBannerImage(self):
         try:
-            bannerImg = self.__driver.find_element(By.CSS_SELECTOR, ".Banner--image > img")
+            bannerImg = self.__driver.find_elements(By.XPATH, "//main//img")[0]
             imgUrl = bannerImg.get_attribute('src')
             imgRes = requests.get(imgUrl)
             img = Image.open(BytesIO(imgRes.content))
             return img
         except:
-            raise RuntimeError('컬렉션 배너 이미지 가져오기 실패')
+            raise RuntimeError('fail to get collection banenr image')
 
     def __getCollectionImage(self):
         try:
-            collectionImg = self.__driver.find_element(By.CSS_SELECTOR, ".CollectionHeader--collection-image > img")
+            collectionImg = self.__driver.find_elements(By.XPATH, "//main//img")[1]
             imgUrl = collectionImg.get_attribute('src')
             imgRes = requests.get(imgUrl)
             img = Image.open(BytesIO(imgRes.content))
             return img
         except:
-            raise RuntimeError('컬렉션 썸네일 가져오기 실패')
+            raise RuntimeError('fail to get collection thumbnail image')
 
     def __getMaxItemNum(self):
         try:
-            itemStatus = self.__driver.find_element(By.CLASS_NAME, 'CollectionStatsBar--bottom-bordered div[tabIndex="-1"]')
-            return int(itemStatus.get_attribute('innerHTML'))
-        except:
+            itemStatus = self.__driver.find_elements(By.XPATH, "//div[contains(@class, 'AssetSearchView--results')]//p")[0].text
+            itemCnt = int(str(itemStatus).replace('items', '').replace(',', '').strip())
+            logging.info('total items: {}'.format(itemCnt))
+            return itemCnt
+        except Exception as e:
+            logging.error(e)
             return self.__maxNumOfAssets
 
     def __getCollectionInfo(self):
@@ -167,8 +151,6 @@ class OpenseaCollectionScraper:
             except:
                 collectionInfo["description"] = ""
 
-            collectionInfo["type"] = random.choice(["erc721", "erc1155"])
-
             return collectionInfo
         except:
-            raise RuntimeError('컬렉션 정보 생성 중 실패!')
+            raise RuntimeError('fail to get collection info')

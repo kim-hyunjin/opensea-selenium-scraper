@@ -1,4 +1,9 @@
-# build web scraper with selenium and python
+# opensea wab scraper
+
+This helps you gathering metadata from opensea.
+
+- collection's thumbnail, banner image and base info
+- token's image and base info
 
 ## how to run
 
@@ -9,12 +14,7 @@ $ pip3 install -r requirements.txt
 $ python3 scraper.py
 ```
 
-## what you need
-
-- access_token
-- api url(.env file)
-
-## 셀레니움 참고자료
+## reference
 
 - https://www.selenium.dev/documentation/
 - https://www.selenium.dev/documentation/webdriver/elements/finders/
